@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Low-Bandwidth P2P Chat</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .chat-card { width: 100%; max-width: 450px; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h2 { margin-top: 0; color: #00adb5; }
+        .step { background: #2d2d2d; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        textarea { width: 100%; box-sizing: border-box; background: #3d3d3d; color: #fff; border: 1px solid #555; padding: 8px; border-radius: 4px; resize: none; font-size: 12px; }
+        button { background: #00adb5; color: #fff; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 8px; }
+        button:hover { background: #00f5ff; color: #000; }
+        #chatbox { height: 300px; border: 1px solid #333; background: #181818; overflow-y: auto; padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; flex-direction: column; }
+        .msg { max-width: 80%; padding: 8px 12px; border-radius: 15px; margin: 4px 0; word-break: break-word; }
+        .msg.me { background: #00adb5; color: #000; align-self: flex-end; }
+        .msg.them { background: #3a3a3a; color: #fff; align-self: flex-start; }
+        .hidden { display: none; }
+        .flex-row { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="chat-card">
+    <h2>⚡ Low-Data P2P Chat</h2>
+    
+    <div id="step1">
+        <button id="btn-host">Step 1: I am the Host</button>
+        <button id="btn-join" style="background: #393e46;">Step 1: I am Joining</button>
+    </div>
+
+    <div id="flow-host" class="hidden step">
+        <p>1. Copy this code and send it to your friend:</p>
+        <textarea id="host-offer" rows="3" readonly></textarea>
+        <button id="btn-copy-offer">Copy Code</button>
+        <p style="margin-top:15px;">2. Paste the reply code they send back here:</p>
+        <textarea id="host-answer" rows="3" placeholder="Paste reply code here..."></textarea>
+        <button id="btn-connect-host">Connect</button>
+    </div>
+
+    <div id="flow-join" class="hidden step">
+        <p>1. Paste the code your friend sent you:</p>
+        <textarea id="join-offer" rows="3" placeholder="Paste code here..."></textarea>
+        <button id="btn-gen-answer">Generate Reply Code</button>
+        <div id="join-reply-area" class="hidden">
+            <p style="margin-top:15px;">2. Copy this reply code and send it back to the host:</p>
+            <textarea id="join-answer" rows="3" readonly></textarea>
+            <button id="btn-copy-answer">Copy Reply Code</button>
+        </div>
+    </div>
+
+    <div id="chat-interface" class="hidden">
+        <div id="chatbox"></div>
+        <div class="flex-row">
+            <input type="text" id="msg-input" placeholder="Type a message..." style="flex-grow: 1; padding: 10px; background: #2d2d2d; border: 1px solid #555; color: #fff; border-radius: 4px;">
+            <button id="btn-send" style="width: auto; margin: 0;">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Using a public free STUN server from Google to help devices find each other over the internet/router
+    const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    const pc = new RTCPeerConnection(config);
+    let dataChannel;
+
+    // UI Elements
+    const s1 = document.getElementById('step1'), fh = document.getElementById('flow-host'), fj = document.getElementById('flow-join'), ci = document.getElementById('chat-interface');
+    const chatbox = document.getElementById('chatbox'), msgInput = document.getElementById('msg-input');
+
+    // Toggle Flows
+    document.getElementById('btn-host').onclick = async () => {
+        s1.classList.add('hidden'); fh.classList.remove('hidden');
+        dataChannel = pc.createDataChannel("textChat", { ordered: true });
+        setupChannel(dataChannel);
+        
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+    };
+
+    document.getElementById('btn-join').onclick = () => { s1.classList.add('hidden'); fj.classList.remove('hidden'); };
+
+    // ICE Gathering
+    pc.onicecandidate = (e) => {
+        if (!e.candidate) { // Gathering complete, output final payload
+            if (dataChannel) {
+                document.getElementById('host-offer').value = btoa(JSON.stringify(pc.localDescription));
+            } else {
+                document.getElementById('join-answer').value = btoa(JSON.stringify(pc.localDescription));
+            }
+        }
+    };
+
+    // Host connects
+    document.getElementById('btn-connect-host').onclick = async () => {
+        const answerRaw = atob(document.getElementById('host-answer').value.trim());
+        await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerRaw)));
+    };
+
+    // Joiner generates answer
+    document.getElementById('btn-gen-answer').onclick = async () => {
+        const offerRaw = atob(document.getElementById('join-offer').value.trim());
+        pc.ondatachannel = (e) => { dataChannel = e.channel; setupChannel(dataChannel); };
+        await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(offerRaw)));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        document.getElementById('join-reply-area').classList.remove('hidden');
+    };
+
+    // Clipboard helpers
+    document.getElementById('btn-copy-offer').onclick = () => { navigator.clipboard.writeText(document.getElementById('host-offer').value); alert("Copied!"); };
+    document.getElementById('btn-copy-answer').onclick = () => { navigator.clipboard.writeText(document.getElementById('join-answer').value); alert("Copied!"); };
+
+    // Chat handling
+    function setupChannel(chan) {
+        chan.onopen = () => { fh.classList.add('hidden'); fj.classList.add('hidden'); ci.classList.remove('hidden'); appendMsg("Connected directly to peer!", 'them'); };
+        chan.onmessage = (e) => appendMsg(e.data, 'them');
+    }
+
+    document.getElementById('btn-send').onclick = send;
+    msgInput.onkeypress = (e) => { if(e.key === 'Enter') send(); };
+
+    function send() {
+        if(msgInput.value.trim() && dataChannel && dataChannel.readyState === "open") {
+            dataChannel.send(msgInput.value);
+            appendMsg(msgInput.value, 'me');
+            msgInput.value = "";
+        }
+    }
+
+    function appendMsg(text, side) {
+        const m = document.createElement('div');
+        m.className = `msg ${side}`;
+        m.innerText = text;
+        chatbox.appendChild(m);
+        chatbox.scrollTop = chatbox.scrollHeight;
+    }
+</script>
+</body>
+</html>
