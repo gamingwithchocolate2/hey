@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Low-Bandwidth P2P Chat</title>
+    <title>our chat</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; justify-content: center; }
         .chat-card { width: 100%; max-width: 450px; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
@@ -23,7 +23,7 @@
 <body>
 
 <div class="chat-card">
-    <h2>⚡ Low-Data P2P Chat</h2>
+    <h2>⚡chat</h2>
     
     <div id="step1">
         <button id="btn-host">Step 1: I am the Host</button>
@@ -31,7 +31,7 @@
     </div>
 
     <div id="flow-host" class="hidden step">
-        <p>1. Copy this code and send it to your friend:</p>
+        <p>give:</p>
         <textarea id="host-offer" rows="3" readonly></textarea>
         <button id="btn-copy-offer">Copy Code</button>
         <p style="margin-top:15px;">2. Paste the reply code they send back here:</p>
@@ -40,11 +40,11 @@
     </div>
 
     <div id="flow-join" class="hidden step">
-        <p>1. Paste the code your friend sent you:</p>
+        <p>1. paste the code i sent you:</p>
         <textarea id="join-offer" rows="3" placeholder="Paste code here..."></textarea>
         <button id="btn-gen-answer">Generate Reply Code</button>
         <div id="join-reply-area" class="hidden">
-            <p style="margin-top:15px;">2. Copy this reply code and send it back to the host:</p>
+            <p style="margin-top:15px;">give code back to me:</p>
             <textarea id="join-answer" rows="3" readonly></textarea>
             <button id="btn-copy-answer">Copy Reply Code</button>
         </div>
