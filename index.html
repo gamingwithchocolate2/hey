@@ -18,7 +18,7 @@
         /* Setup Screen */
         .setup-screen { padding: 24px; display: flex; flex-direction: column; gap: 16px; flex-grow: 1; justify-content: center; }
         .setup-card { background: #1a1a1e; border: 1px solid #27272a; padding: 16px; border-radius: 12px; }
-        textarea { width: 100%; box-sizing: border-box; background: #27272a; color: #fff; border: 1px solid #3f3f46; padding: 10px; border-radius: 8px; resize: none; font-size: 13px; font-family: monospace; margin-top: 8px; }
+        textarea { width: 100%; box-sizing: border-box; background: #27272a; color: #fff; border: 1px solid #3f3f46; padding: 10px; border-radius: 8px; resize: none; font-size: 13px; font-family: monospace; margin-top: 8px; word-break: break-all; }
         button { background: #3b82f6; color: #fff; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 14px; width: 100%; transition: background 0.2s; }
         button:hover { background: #2563eb; }
         .secondary-btn { background: #27272a; border: 1px solid #3f3f46; }
@@ -63,7 +63,7 @@
 
         <div id="host-panel" class="hidden setup-card">
             <span style="font-size: 14px;">Send this invite string:</span>
-            <textarea id="outbound-code" rows="3" readonly></textarea>
+            <textarea id="outbound-code" rows="5" readonly placeholder="Generating..."></textarea>
             <button id="copy-invite-btn" style="margin: 8px 0;">Copy Invite</button>
             <textarea id="inbound-reply" rows="3" placeholder="Paste response here..."></textarea>
             <button id="connect-host-btn" style="margin-top: 8px;">Connect</button>
@@ -73,7 +73,7 @@
             <textarea id="inbound-invite" rows="3" placeholder="Paste invite here..."></textarea>
             <button id="gen-reply-btn" style="margin: 8px 0;">Accept Invite</button>
             <div id="reply-wrapper" class="hidden">
-                <textarea id="outbound-reply" rows="3" readonly></textarea>
+                <textarea id="outbound-reply" rows="5" readonly placeholder="Generating..."></textarea>
                 <button id="copy-reply-btn" style="margin-top: 8px;">Copy Response</button>
             </div>
         </div>
@@ -94,38 +94,36 @@
 </div>
 
 <script>
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    // Setting iceServers to empty fixes the blank string bug on bad connections by skipping external network lookups
+    const pc = new RTCPeerConnection({ iceServers: [] });
     let dataChannel;
     let mediaRecorder;
     let audioChunks = [];
 
-    // UI elements
     const setupView = document.getElementById('setup-view'), chatView = document.getElementById('chat-view');
     const modeSelect = document.getElementById('mode-select'), hostPanel = document.getElementById('host-panel'), joinPanel = document.getElementById('join-panel');
     const messagesContainer = document.getElementById('messages-container'), textInput = document.getElementById('text-input');
     const statusTag = document.getElementById('status-tag');
 
-    // Setup toggles
+    // Force immediate generation without waiting for slow network timeouts
+    async function displayLocalDescription(elementId) {
+        if (pc.localDescription) {
+            document.getElementById(elementId).value = btoa(JSON.stringify(pc.localDescription));
+        }
+    }
+
     document.getElementById('start-btn').onclick = async () => {
         modeSelect.classList.add('hidden'); hostPanel.classList.remove('hidden');
         dataChannel = pc.createDataChannel("chatChannel", { ordered: true });
         bindChannelEvents(dataChannel);
+        
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
+        // Display it instantly instead of waiting for gathering events
+        displayLocalDescription('outbound-code');
     };
 
     document.getElementById('join-menu-btn').onclick = () => { modeSelect.classList.add('hidden'); joinPanel.classList.remove('hidden'); };
-
-    pc.onicecandidate = (e) => {
-        if (!e.candidate) {
-            const b64 = btoa(JSON.stringify(pc.localDescription));
-            if (dataChannel.id !== null) {
-                document.getElementById('outbound-code').value = b64;
-            } else {
-                document.getElementById('outbound-reply').value = b64;
-            }
-        }
-    };
 
     document.getElementById('connect-host-btn').onclick = async () => {
         const reply = JSON.parse(atob(document.getElementById('inbound-reply').value.trim()));
@@ -136,16 +134,28 @@
         const invite = JSON.parse(atob(document.getElementById('inbound-invite').value.trim()));
         pc.ondatachannel = (e) => { dataChannel = e.channel; bindChannelEvents(dataChannel); };
         await pc.setRemoteDescription(new RTCSessionDescription(invite));
+        
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        
         document.getElementById('reply-wrapper').classList.remove('hidden');
+        displayLocalDescription('outbound-reply');
     };
 
-    // Copy handlers
+    // Fallback display if anything changes late
+    pc.onicecandidate = (e) => {
+        if (!e.candidate) {
+            if (dataChannel && dataChannel.id !== null) {
+                displayLocalDescription('outbound-code');
+            } else {
+                displayLocalDescription('outbound-reply');
+            }
+        }
+    };
+
     document.getElementById('copy-invite-btn').onclick = () => { navigator.clipboard.writeText(document.getElementById('outbound-code').value); };
     document.getElementById('copy-reply-btn').onclick = () => { navigator.clipboard.writeText(document.getElementById('outbound-reply').value); };
 
-    // Core channel binding
     function bindChannelEvents(chan) {
         chan.onopen = () => {
             setupView.classList.add('hidden');
@@ -159,7 +169,6 @@
         };
     }
 
-    // Messaging mechanics
     document.getElementById('send-btn').onclick = dispatchText;
     textInput.onkeypress = (e) => { if(e.key === 'Enter') dispatchText(); };
 
@@ -173,7 +182,6 @@
         }
     }
 
-    // Attachment mechanics (Images & Files)
     const fileInput = document.getElementById('file-input');
     document.getElementById('attach-btn').onclick = () => fileInput.click();
     
@@ -195,7 +203,6 @@
         reader.readAsDataURL(file);
     };
 
-    // Voice Message mechanics
     const voiceBtn = document.getElementById('voice-btn');
     voiceBtn.onclick = async () => {
         if (!mediaRecorder || mediaRecorder.state === "inactive") {
@@ -226,7 +233,6 @@
         }
     };
 
-    // Render engine
     function displayMessage(data, sender) {
         const bubble = document.createElement('div');
         bubble.className = `msg ${sender}`;
